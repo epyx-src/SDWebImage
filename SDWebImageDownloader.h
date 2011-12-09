@@ -22,6 +22,7 @@ extern NSString *const SDWebImageDownloadStopNotification;
     NSMutableData *imageData;
     id userInfo;
     BOOL lowPriority;
+    NSDictionary *httpHeaders;
 }
 
 @property (nonatomic, retain) NSURL *url;
@@ -29,9 +30,11 @@ extern NSString *const SDWebImageDownloadStopNotification;
 @property (nonatomic, retain) NSMutableData *imageData;
 @property (nonatomic, retain) id userInfo;
 @property (nonatomic, readwrite) BOOL lowPriority;
+@property (nonatomic, retain) NSDictionary *httpHeaders;
 
-+ (id)downloaderWithURL:(NSURL *)url delegate:(id<SDWebImageDownloaderDelegate>)delegate userInfo:(id)userInfo lowPriority:(BOOL)lowPriority;
++ (id)downloaderWithURL:(NSURL *)url delegate:(id<SDWebImageDownloaderDelegate>)delegate userInfo:(id)userInfo lowPriority:(BOOL)lowPriority httpHeaders:(NSDictionary *)httpHeaders;
 + (id)downloaderWithURL:(NSURL *)url delegate:(id<SDWebImageDownloaderDelegate>)delegate userInfo:(id)userInfo;
++ (id)downloaderWithURL:(NSURL *)url delegate:(id<SDWebImageDownloaderDelegate>)delegate httpHeaders:(NSDictionary *)httpHeaders;
 + (id)downloaderWithURL:(NSURL *)url delegate:(id<SDWebImageDownloaderDelegate>)delegate;
 - (void)start;
 - (void)cancel;

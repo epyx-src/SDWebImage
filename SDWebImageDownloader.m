@@ -22,7 +22,7 @@ NSString *const SDWebImageDownloadStopNotification = @"SDWebImageDownloadStopNot
 @end
 
 @implementation SDWebImageDownloader
-@synthesize url, delegate, connection, imageData, userInfo, lowPriority;
+@synthesize url, delegate, connection, imageData, userInfo, lowPriority, httpHeaders;
 
 #pragma mark Public Methods
 
@@ -31,13 +31,18 @@ NSString *const SDWebImageDownloadStopNotification = @"SDWebImageDownloadStopNot
     return [self downloaderWithURL:url delegate:delegate userInfo:nil];
 }
 
++ (id)downloaderWithURL:(NSURL *)url delegate:(id<SDWebImageDownloaderDelegate>)delegate httpHeaders:(NSDictionary *)httpHeaders
+{
+    return [self downloaderWithURL:url delegate:delegate userInfo:nil lowPriority:NO httpHeaders:httpHeaders];
+}
+
 + (id)downloaderWithURL:(NSURL *)url delegate:(id<SDWebImageDownloaderDelegate>)delegate userInfo:(id)userInfo
 {
 
-    return [self downloaderWithURL:url delegate:delegate userInfo:userInfo lowPriority:NO];
+    return [self downloaderWithURL:url delegate:delegate userInfo:userInfo lowPriority:NO httpHeaders:nil];
 }
 
-+ (id)downloaderWithURL:(NSURL *)url delegate:(id<SDWebImageDownloaderDelegate>)delegate userInfo:(id)userInfo lowPriority:(BOOL)lowPriority
++ (id)downloaderWithURL:(NSURL *)url delegate:(id<SDWebImageDownloaderDelegate>)delegate userInfo:(id)userInfo lowPriority:(BOOL)lowPriority httpHeaders:(NSDictionary *)httpHeaders
 {
     // Bind SDNetworkActivityIndicator if available (download it here: http://github.com/rs/SDNetworkActivityIndicator )
     // To use it, just add #import "SDNetworkActivityIndicator.h" in addition to the SDWebImage import
@@ -57,6 +62,7 @@ NSString *const SDWebImageDownloadStopNotification = @"SDWebImageDownloadStopNot
     downloader.delegate = delegate;
     downloader.userInfo = userInfo;
     downloader.lowPriority = lowPriority;
+    downloader.httpHeaders = httpHeaders;
     [downloader performSelectorOnMainThread:@selector(start) withObject:nil waitUntilDone:YES];
     return downloader;
 }
@@ -69,7 +75,12 @@ NSString *const SDWebImageDownloadStopNotification = @"SDWebImageDownloadStopNot
 - (void)start
 {
     // In order to prevent from potential duplicate caching (NSURLCache + SDImageCache) we disable the cache for image requests
-    NSURLRequest *request = [[NSURLRequest alloc] initWithURL:url cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:15];
+    NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:url cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:15];
+    if ( self.httpHeaders ) {
+        for (NSString *key in [self.httpHeaders allKeys]) {
+            [request setValue:[self.httpHeaders objectForKey:key] forHTTPHeaderField:key];
+        }
+    }
     self.connection = [[[NSURLConnection alloc] initWithRequest:request delegate:self startImmediately:NO] autorelease];
 
     // If not in low priority mode, ensure we aren't blocked by UI manipulations (default runloop mode for NSURLConnection is NSEventTrackingRunLoopMode)
@@ -167,8 +178,13 @@ NSString *const SDWebImageDownloadStopNotification = @"SDWebImageDownloadStopNot
     [connection release], connection = nil;
     [imageData release], imageData = nil;
     [userInfo release], userInfo = nil;
+    [httpHeaders release], httpHeaders = nil;
     [super dealloc];
 }
 
+//-(void)connection:(NSURLConnection *)connection didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge
+//{
+//    NSLog( @"didReceiveAuthenticationChallenge" );
+//}
 
 @end
