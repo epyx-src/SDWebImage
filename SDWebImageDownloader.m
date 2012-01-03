@@ -6,6 +6,7 @@
  * file that was distributed with this source code.
  */
 
+#import <objc/message.h>
 #import "SDWebImageDownloader.h"
 
 #ifdef ENABLE_SDWEBIMAGE_DECODER
@@ -22,7 +23,7 @@ NSString *const SDWebImageDownloadStopNotification = @"SDWebImageDownloadStopNot
 @end
 
 @implementation SDWebImageDownloader
-@synthesize url, delegate, connection, imageData, userInfo, lowPriority, httpHeaders;
+@synthesize url, delegate, connection, imageData, etag, userInfo, lowPriority, httpHeaders, statusCode;
 
 #pragma mark Public Methods
 
@@ -117,6 +118,16 @@ NSString *const SDWebImageDownloadStopNotification = @"SDWebImageDownloadStopNot
 
 #pragma mark NSURLConnection (delegate)
 
+- (void)connection:(NSURLConnection *)connection didReceiveResponse:(NSURLResponse *)response
+{
+    if ([response isKindOfClass:[NSHTTPURLResponse class]]) {
+        NSHTTPURLResponse *httpurlResponse = (NSHTTPURLResponse *)response;
+        NSDictionary *headers = [httpurlResponse allHeaderFields];
+        self.etag = [headers objectForKey:@"Etag"];
+        self.statusCode = [httpurlResponse statusCode];
+    }
+}
+
 - (void)connection:(NSURLConnection *)aConnection didReceiveData:(NSData *)data
 {
     [imageData appendData:data];
@@ -134,16 +145,26 @@ NSString *const SDWebImageDownloadStopNotification = @"SDWebImageDownloadStopNot
         [delegate performSelector:@selector(imageDownloaderDidFinish:) withObject:self];
     }
 
-    if ([delegate respondsToSelector:@selector(imageDownloader:didFinishWithImage:)])
-    {
-        UIImage *image = [[UIImage alloc] initWithData:imageData];
+    if (self.statusCode == 304) {
+        if ([delegate respondsToSelector:@selector(imageDownloaderDidFinishWithSameImage:)])
+        {
+            objc_msgSend(delegate, @selector(imageDownloaderDidFinishWithSameImage:), self);
+        }
+    } else {
+        if ([delegate respondsToSelector:@selector(imageDownloader:didFinishWithImage:andEtag:)]) {
+            UIImage *image = [[UIImage alloc] initWithData:imageData];
+            NSString *etagCopy;
+            if (self.etag) {
+                etagCopy = [[NSString alloc] initWithString:self.etag];
+            }
 
 #ifdef ENABLE_SDWEBIMAGE_DECODER
-        [[SDWebImageDecoder sharedImageDecoder] decodeImage:image withDelegate:self userInfo:nil];
+            [[SDWebImageDecoder sharedImageDecoder] decodeImage:image withDelegate:self userInfo:nil];
 #else
-        [delegate performSelector:@selector(imageDownloader:didFinishWithImage:) withObject:self withObject:image];
+            objc_msgSend(delegate, @selector(imageDownloader:didFinishWithImage:andEtag:), self, image, etagCopy);
 #endif
-        [image release];
+            [image release];
+        }
     }
 }
 
@@ -158,6 +179,7 @@ NSString *const SDWebImageDownloadStopNotification = @"SDWebImageDownloadStopNot
 
     self.connection = nil;
     self.imageData = nil;
+    self.etag = nil;
 }
 
 #pragma mark SDWebImageDecoderDelegate
@@ -177,6 +199,7 @@ NSString *const SDWebImageDownloadStopNotification = @"SDWebImageDownloadStopNot
     [url release], url = nil;
     [connection release], connection = nil;
     [imageData release], imageData = nil;
+    [etag release], etag = nil;
     [userInfo release], userInfo = nil;
     [httpHeaders release], httpHeaders = nil;
     [super dealloc];

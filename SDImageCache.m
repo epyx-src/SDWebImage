@@ -8,6 +8,7 @@
 
 #import "SDImageCache.h"
 #import "SDWebImageDecoder.h"
+#import "SDWebImageManager.h"
 #import <CommonCrypto/CommonDigest.h>
 
 #ifdef ENABLE_SDWEBIMAGE_DECODER
@@ -101,15 +102,27 @@ static SDImageCache *instance;
 
 #pragma mark SDImageCache (private)
 
-- (NSString *)cachePathForKey:(NSString *)key
+- (NSString *)filnameForKey:(NSString *)key
 {
     const char *str = [key UTF8String];
     unsigned char r[CC_MD5_DIGEST_LENGTH];
     CC_MD5(str, (CC_LONG)strlen(str), r);
     NSString *filename = [NSString stringWithFormat:@"%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
                           r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12], r[13], r[14], r[15]];
+    return filename;
+}
 
+- (NSString *)cachePathForKey:(NSString *)key
+{
+    NSString *filename = [self filnameForKey:key];
     return [diskCachePath stringByAppendingPathComponent:filename];
+}
+
+- (NSString *)cachePathForKeyEtag:(NSString *)key
+{
+    NSString *filename = [self filnameForKey:key];
+    NSString *filenameForEtag = [NSString stringWithFormat:@"%@-etag", filename];
+    return [diskCachePath stringByAppendingPathComponent:filenameForEtag];
 }
 
 - (void)storeKeyWithDataToDisk:(NSArray *)keyAndData
@@ -119,10 +132,15 @@ static SDImageCache *instance;
 
     NSString *key = [keyAndData objectAtIndex:0];
     NSData *data = [keyAndData count] > 1 ? [keyAndData objectAtIndex:1] : nil;
+    NSString *etag = [keyAndData count] > 2 ? [keyAndData objectAtIndex:2] : nil;
 
     if (data)
     {
         [fileManager createFileAtPath:[self cachePathForKey:key] contents:data attributes:nil];
+        if (etag) {
+            const char *utfEtag = [etag UTF8String];
+            [fileManager createFileAtPath:[self cachePathForKeyEtag:key] contents:[NSData dataWithBytes:utfEtag length:strlen(utfEtag)] attributes:nil];
+        }
     }
     else
     {
@@ -149,19 +167,28 @@ static SDImageCache *instance;
 {
     NSString *key = [arguments objectForKey:@"key"];
     id <SDImageCacheDelegate> delegate = [arguments objectForKey:@"delegate"];
-    NSDictionary *info = [arguments objectForKey:@"userInfo"];
+    NSMutableDictionary *info = [[[NSMutableDictionary alloc] initWithDictionary:[arguments objectForKey:@"userInfo"]] autorelease];
     UIImage *image = [arguments objectForKey:@"image"];
+    NSString *etag = [arguments objectForKey:@"etag"];
+    if (etag) {
+        [info setObject:etag forKey:@"etag"];
+    }
 
+    BOOL doRequest = YES;
     if (image)
     {
         [memCache setObject:image forKey:key];
 
-        if ([delegate respondsToSelector:@selector(imageCache:didFindImage:forKey:userInfo:)])
+        if (![[info objectForKey:@"options"] intValue] & SDWebImageCacheUseETags)
         {
-            [delegate imageCache:self didFindImage:image forKey:key userInfo:info];
+            doRequest = NO;
+        }
+        if ([delegate respondsToSelector:@selector(imageCache:didFindImage:forKey:userInfo:removeDelegate:)])
+        {
+            [delegate imageCache:self didFindImage:image forKey:key userInfo:info removeDelegate:!doRequest];
         }
     }
-    else
+    if (doRequest)
     {
         if ([delegate respondsToSelector:@selector(imageCache:didNotFindImageForKey:userInfo:)])
         {
@@ -186,6 +213,9 @@ static SDImageCache *instance;
         }
 #endif
         [mutableArguments setObject:image forKey:@"image"];
+
+        NSString *etag = [[[NSString alloc] initWithContentsOfFile:[self cachePathForKeyEtag:key] encoding:NSUTF8StringEncoding error:nil] autorelease];
+        [mutableArguments setObject:etag forKey:@"etag"];
     }
 
     [self performSelectorOnMainThread:@selector(notifyDelegate:) withObject:mutableArguments waitUntilDone:NO];
@@ -193,7 +223,7 @@ static SDImageCache *instance;
 
 #pragma mark ImageCache
 
-- (void)storeImage:(UIImage *)image imageData:(NSData *)data forKey:(NSString *)key toDisk:(BOOL)toDisk
+- (void)storeImage:(UIImage *)image imageData:(NSData *)data withEtag:(NSString *)etag forKey:(NSString *)key toDisk:(BOOL)toDisk
 {
     if (!image || !key)
     {
@@ -208,7 +238,11 @@ static SDImageCache *instance;
         NSArray *keyWithData;
         if (data)
         {
-            keyWithData = [NSArray arrayWithObjects:key, data, nil];
+            if (etag) {
+                keyWithData = [NSArray arrayWithObjects:key, data, etag, nil];
+            } else {
+                keyWithData = [NSArray arrayWithObjects:key, data, nil];
+            }
         }
         else
         {
@@ -222,12 +256,12 @@ static SDImageCache *instance;
 
 - (void)storeImage:(UIImage *)image forKey:(NSString *)key
 {
-    [self storeImage:image imageData:nil forKey:key toDisk:YES];
+    [self storeImage:image imageData:nil withEtag:nil forKey:key toDisk:YES];
 }
 
 - (void)storeImage:(UIImage *)image forKey:(NSString *)key toDisk:(BOOL)toDisk
 {
-    [self storeImage:image imageData:nil forKey:key toDisk:toDisk];
+    [self storeImage:image imageData:nil withEtag:nil forKey:key toDisk:toDisk];
 }
 
 
@@ -277,12 +311,16 @@ static SDImageCache *instance;
     UIImage *image = [memCache objectForKey:key];
     if (image)
     {
+        BOOL useEtags = [[info objectForKey:@"options"] intValue] & SDWebImageCacheUseETags;
         // ...notify delegate immediately, no need to go async
-        if ([delegate respondsToSelector:@selector(imageCache:didFindImage:forKey:userInfo:)])
+        if ([delegate respondsToSelector:@selector(imageCache:didFindImage:forKey:userInfo:removeDelegate:)])
         {
-            [delegate imageCache:self didFindImage:image forKey:key userInfo:info];
+            [delegate imageCache:self didFindImage:image forKey:key userInfo:info removeDelegate:!useEtags];
         }
-        return;
+        if (!useEtags)
+        {
+            return;
+        }
     }
 
     NSMutableDictionary *arguments = [NSMutableDictionary dictionaryWithCapacity:3];

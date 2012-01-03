@@ -156,7 +156,7 @@ static SDWebImageManager *instance;
     return NSNotFound;
 }
 
-- (void)imageCache:(SDImageCache *)imageCache didFindImage:(UIImage *)image forKey:(NSString *)key userInfo:(NSDictionary *)info
+- (void)imageCache:(SDImageCache *)imageCache didFindImage:(UIImage *)image forKey:(NSString *)key userInfo:(NSDictionary *)info removeDelegate:(BOOL)doRemoveDelegate
 {
     NSURL *url = [info objectForKey:@"url"];
     id<SDWebImageManagerDelegate> delegate = [info objectForKey:@"delegate"];
@@ -173,8 +173,11 @@ static SDWebImageManager *instance;
         [delegate performSelector:@selector(webImageManager:didFinishWithImage:) withObject:self withObject:image];
     }
 
-    [cacheDelegates removeObjectAtIndex:idx];
-    [cacheURLs removeObjectAtIndex:idx];
+    if (doRemoveDelegate)
+    {
+        [cacheDelegates removeObjectAtIndex:idx];
+        [cacheURLs removeObjectAtIndex:idx];
+    }
 }
 
 - (void)imageCache:(SDImageCache *)imageCache didNotFindImageForKey:(NSString *)key userInfo:(NSDictionary *)info
@@ -182,7 +185,11 @@ static SDWebImageManager *instance;
     NSURL *url = [info objectForKey:@"url"];
     id<SDWebImageManagerDelegate> delegate = [info objectForKey:@"delegate"];
     SDWebImageOptions options = [[info objectForKey:@"options"] intValue];
-    NSDictionary *httpHeaders = [info objectForKey:@"httpHeaders"];
+    NSString *etag = [info objectForKey:@"etag"];
+    NSMutableDictionary *httpHeaders = [[[NSMutableDictionary alloc] initWithDictionary:[info objectForKey:@"httpHeaders"]] autorelease];
+    if (etag) {
+        [httpHeaders setObject:etag forKey:@"If-None-Match"];
+    }
 
     NSUInteger idx = [self indexOfDelegate:delegate waitingForURL:url];
     if (idx == NSNotFound)
@@ -215,7 +222,25 @@ static SDWebImageManager *instance;
 
 #pragma mark SDWebImageDownloaderDelegate
 
-- (void)imageDownloader:(SDWebImageDownloader *)downloader didFinishWithImage:(UIImage *)image
+- (void)imageDownloaderDidFinishWithSameImage:(SDWebImageDownloader *)downloader {
+    [downloader retain];
+
+    // Notify all the downloadDelegates with this downloader
+    for (NSInteger idx = (NSInteger) [downloaders count] - 1; idx >= 0; idx--) {
+        NSUInteger uidx = (NSUInteger) idx;
+        SDWebImageDownloader *aDownloader = [downloaders objectAtIndex:uidx];
+        if (aDownloader == downloader) {
+            [downloaders removeObjectAtIndex:uidx];
+            [downloadDelegates removeObjectAtIndex:uidx];
+        }
+    }
+
+    // Release the downloader
+    [downloaderForURL removeObjectForKey:downloader.url];
+    [downloader release];
+}
+
+- (void)imageDownloader:(SDWebImageDownloader *)downloader didFinishWithImage:(UIImage *)image andEtag:(NSString *)etag
 {
     [downloader retain];
     SDWebImageOptions options = [[downloader.userInfo objectForKey:@"options"] intValue];
@@ -253,7 +278,7 @@ static SDWebImageManager *instance;
     {
         // Store the image in the cache
         [[SDImageCache sharedImageCache] storeImage:image
-                                          imageData:downloader.imageData
+                                          imageData:downloader.imageData withEtag:etag
                                              forKey:[downloader.url absoluteString]
                                              toDisk:!(options & SDWebImageCacheMemoryOnly)];
     }

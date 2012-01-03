@@ -14,8 +14,8 @@
 
 @optional
 
-- (void)imageDownloaderDidFinish:(SDWebImageDownloader *)downloader;
-- (void)imageDownloader:(SDWebImageDownloader *)downloader didFinishWithImage:(UIImage *)image;
+- (void)imageDownloaderDidFinishWithSameImage:(SDWebImageDownloader *)downloader;
+- (void)imageDownloader:(SDWebImageDownloader *)downloader didFinishWithImage:(UIImage *)image andEtag:(NSString *)etag;
 - (void)imageDownloader:(SDWebImageDownloader *)downloader didFailWithError:(NSError *)error;
 
 @end
