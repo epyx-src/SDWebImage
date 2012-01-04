@@ -29,6 +29,10 @@ static SDImageCache *instance;
     {
         // Init the memory cache
         memCache = [[NSMutableDictionary alloc] init];
+        memCacheLastUpdateTime = [[NSMutableDictionary alloc] init];
+
+        // Default etags query time interval is 15 minutes
+        etagsQuerytimeInterval = 15*60;
 
         // Init the disk cache
         NSArray *paths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
@@ -80,6 +84,7 @@ static SDImageCache *instance;
 - (void)dealloc
 {
     [memCache release], memCache = nil;
+    [memCacheLastUpdateTime release], memCacheLastUpdateTime = nil;
     [diskCachePath release], diskCachePath = nil;
     [cacheInQueue release], cacheInQueue = nil;
 
@@ -101,6 +106,13 @@ static SDImageCache *instance;
 }
 
 #pragma mark SDImageCache (private)
+
+- (void)setImageInMemCache:(UIImage *)image forKey:(NSString *)key
+{
+    [memCache setObject:image forKey:key];
+    NSDate *date = [NSDate date];
+    [memCacheLastUpdateTime setObject:date forKey:key];
+}
 
 - (NSString *)filnameForKey:(NSString *)key
 {
@@ -177,7 +189,7 @@ static SDImageCache *instance;
     BOOL doRequest = YES;
     if (image)
     {
-        [memCache setObject:image forKey:key];
+        [self setImageInMemCache:image forKey:key];
 
         if (![[info objectForKey:@"options"] intValue] & SDWebImageCacheUseETags)
         {
@@ -223,6 +235,11 @@ static SDImageCache *instance;
 
 #pragma mark ImageCache
 
+- (void)setEtagsQueryTimeInterval:(NSTimeInterval)timeInterval
+{
+    etagsQuerytimeInterval = timeInterval;
+}
+
 - (void)storeImage:(UIImage *)image imageData:(NSData *)data withEtag:(NSString *)etag forKey:(NSString *)key toDisk:(BOOL)toDisk
 {
     if (!image || !key)
@@ -230,7 +247,7 @@ static SDImageCache *instance;
         return;
     }
 
-    [memCache setObject:image forKey:key];
+    [self setImageInMemCache:image forKey:key];
 
     if (toDisk)
     {
@@ -284,7 +301,7 @@ static SDImageCache *instance;
         image = [[[UIImage alloc] initWithContentsOfFile:[self cachePathForKey:key]] autorelease];
         if (image)
         {
-            [memCache setObject:image forKey:key];
+            [self setImageInMemCache:image forKey:key];
         }
     }
 
@@ -309,9 +326,18 @@ static SDImageCache *instance;
 
     // First check the in-memory cache...
     UIImage *image = [memCache objectForKey:key];
+    BOOL useEtags = [[info objectForKey:@"options"] intValue] & SDWebImageCacheUseETags;
+
+    NSDate *lastUpdateTime = [memCacheLastUpdateTime objectForKey:key];
+    NSDate *currentTime = [NSDate date];
+    NSDate *lastUpdateTimePlusDelay = [NSDate dateWithTimeInterval:etagsQuerytimeInterval sinceDate:lastUpdateTime];
+    if ([lastUpdateTimePlusDelay compare:currentTime] == NSOrderedDescending)
+    {
+        useEtags = NO;
+    }
+
     if (image)
     {
-        BOOL useEtags = [[info objectForKey:@"options"] intValue] & SDWebImageCacheUseETags;
         // ...notify delegate immediately, no need to go async
         if ([delegate respondsToSelector:@selector(imageCache:didFindImage:forKey:userInfo:removeDelegate:)])
         {

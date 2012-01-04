@@ -12,11 +12,14 @@
 @interface SDImageCache : NSObject
 {
     NSMutableDictionary *memCache;
+    NSMutableDictionary *memCacheLastUpdateTime;
     NSString *diskCachePath;
     NSOperationQueue *cacheInQueue, *cacheOutQueue;
+    NSTimeInterval etagsQuerytimeInterval;
 }
 
 + (SDImageCache *)sharedImageCache;
+- (void)setEtagsQueryTimeInterval:(NSTimeInterval)timeInterval;
 - (void)storeImage:(UIImage *)image forKey:(NSString *)key;
 - (void)storeImage:(UIImage *)image forKey:(NSString *)key toDisk:(BOOL)toDisk;
 - (void)storeImage:(UIImage *)image imageData:(NSData *)data withEtag:(NSString *)etag forKey:(NSString *)key toDisk:(BOOL)toDisk;
