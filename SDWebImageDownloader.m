@@ -153,9 +153,9 @@ NSString *const SDWebImageDownloadStopNotification = @"SDWebImageDownloadStopNot
     } else {
         if ([delegate respondsToSelector:@selector(imageDownloader:didFinishWithImage:andEtag:)]) {
             UIImage *image = [[UIImage alloc] initWithData:imageData];
-            NSString *etagCopy;
+            NSString *etagCopy = nil;
             if (self.etag) {
-                etagCopy = [[NSString alloc] initWithString:self.etag];
+                etagCopy = [NSString stringWithString:self.etag];
             }
 
 #ifdef ENABLE_SDWEBIMAGE_DECODER
