@@ -110,8 +110,13 @@ static SDImageCache *instance;
 - (void)setImageInMemCache:(UIImage *)image forKey:(NSString *)key
 {
     [memCache setObject:image forKey:key];
-    NSDate *date = [NSDate date];
-    [memCacheLastUpdateTime setObject:date forKey:key];
+    if ([memCacheLastUpdateTime objectForKey:key]) {
+        NSDate *date = [NSDate date];
+        [memCacheLastUpdateTime setObject:date forKey:key];
+    } else {
+        NSDate *oldDate = [NSDate dateWithTimeIntervalSince1970:0];
+        [memCacheLastUpdateTime setObject:oldDate forKey:key];
+    }
 }
 
 - (NSString *)filnameForKey:(NSString *)key
