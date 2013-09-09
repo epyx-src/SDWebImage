@@ -232,7 +232,9 @@ static SDImageCache *instance;
         [mutableArguments setObject:image forKey:@"image"];
 
         NSString *etag = [[[NSString alloc] initWithContentsOfFile:[self cachePathForKeyEtag:key] encoding:NSUTF8StringEncoding error:nil] autorelease];
-        [mutableArguments setObject:etag forKey:@"etag"];
+        if (etag) {
+            [mutableArguments setObject:etag forKey:@"etag"];
+        }
     }
 
     [self performSelectorOnMainThread:@selector(notifyDelegate:) withObject:mutableArguments waitUntilDone:NO];
