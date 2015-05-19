@@ -148,7 +148,7 @@ NSString *const SDWebImageDownloadStopNotification = @"SDWebImageDownloadStopNot
     if (self.statusCode == 304) {
         if ([delegate respondsToSelector:@selector(imageDownloaderDidFinishWithSameImage:)])
         {
-            objc_msgSend(delegate, @selector(imageDownloaderDidFinishWithSameImage:), self);
+            ((void(*)(id, SEL, id))objc_msgSend)(delegate, @selector(imageDownloaderDidFinishWithSameImage:), self);
         }
     } else {
         if ([delegate respondsToSelector:@selector(imageDownloader:didFinishWithImage:andEtag:)]) {
@@ -161,7 +161,7 @@ NSString *const SDWebImageDownloadStopNotification = @"SDWebImageDownloadStopNot
 #ifdef ENABLE_SDWEBIMAGE_DECODER
             [[SDWebImageDecoder sharedImageDecoder] decodeImage:image withDelegate:self userInfo:nil];
 #else
-            objc_msgSend(delegate, @selector(imageDownloader:didFinishWithImage:andEtag:), self, image, etagCopy);
+            ((void(*)(id, SEL, id, UIImage *, NSString *))objc_msgSend)(delegate, @selector(imageDownloader:didFinishWithImage:andEtag:), self, image, etagCopy);
 #endif
             [image release];
         }
